@@ -11,3 +11,9 @@ Visual State Gate is a GenLayer primitive for contracts that need consensus on w
 ## Character Count
 
 The notes paragraph is 791 characters, counted programmatically with Python `len()`.
+
+## Evidence Links
+
+- GitHub repo: https://github.com/Ifem1/visual-state-gate
+- Explorer contract page: https://explorer-studio.genlayer.com/contracts/0x1D4caB4b4C2a88538DAA68054834078Ed860fDEc
+- Studio import: network `studionet`, contract address `0x1D4caB4b4C2a88538DAA68054834078Ed860fDEc`

@@ -89,7 +89,7 @@ StudioNet deployment was completed on 2026-07-26 with a dedicated local CLI acco
 - Deploy tx: `0xdd896cb5a994bdc2aea9ffc6676273ca9142396de361336919f6f3c63c99f822`
 - `request_check` tx: `0x5640b46c8bee0870ee50af207230abfa78b2e1a44834b313561279b01fb67b9e`
 - Settled `resolve` tx: `0x6e05e7ebac4ebfc84432b9994149f7a29a7193de1857dce4f0c1ad7bb5ae0033`
-- Explorer root: `https://explorer-studio.genlayer.com`
+- Explorer contract page: `https://explorer-studio.genlayer.com/contracts/0x1D4caB4b4C2a88538DAA68054834078Ed860fDEc`
 
 Live `request_check` input:
 
@@ -142,4 +142,4 @@ Integration tests deploy their own StudioNet instance and drive every write and 
 - StudioNet integration tests: 6 passed, full write/view surface plus a strict convergence check
 - StudioNet deployment: complete
 - Live write coverage on the canonical deployed address: every write and every view method called at least once; `resolve("vsg-1")` converged to `PASS` after several `NO_MAJORITY` retries
-- Public GitHub repo: not configured in this workspace
+- Public GitHub repo: https://github.com/Ifem1/visual-state-gate
