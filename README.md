@@ -1,40 +1,47 @@
 # Visual State Gate
 
-Visual State Gate is a GenLayer Intelligent Contract primitive for contracts that need consensus on what a public webpage visibly shows.
+Visual State Gate is a standalone GenLayer Intelligent Contract primitive for contracts that need consensus on what a public webpage visibly shows.
 
 It is not a frontend, app, or recommendation engine. A consumer contract submits a URL and a precise visual condition, anyone resolves it through a screenshot-based consensus round, and downstream logic reads `PASS`, `FAIL`, or `UNKNOWN`.
 
-## Why this exists
+## Why This Exists
 
 Many consequential states are visible but not cleanly machine-readable: a dashboard says a deployment is complete, a public profile displays a required badge, a hosted receipt shows a merchant and amount, or a product page renders a waitlist label through client-side JavaScript.
 
-A backend screenshot service would make one operator the judge. A DOM parser misses canvas, images, layout, hidden overlays, and rendered UI. A single LLM call produces an off-chain opinion. A multisig of reporters turns the primitive into a social process. Visual State Gate keeps the rendered evidence, semantic judgement, and contract-readable result in one consensus domain.
+A backend screenshot service would make one operator the judge. A DOM parser misses canvas, images, layout, hidden overlays, and rendered UI. A single LLM call produces an off-chain opinion. Visual State Gate keeps the rendered evidence, semantic judgement, and contract-readable result in one consensus domain.
 
-## The primitive
+## How It Works
 
-The core workflow is:
+1. A caller submits `request_check(url, condition, subject, consumer_key)`.
+2. The contract validates the URL and text, stores an immutable pending request, and indexes it under the caller namespace.
+3. Anyone calls `resolve(request_id)`.
+4. Validators render a screenshot with `gl.nondet.web.render`.
+5. Validators compare the visual judgement with `gl.eq_principle.prompt_comparative`.
+6. The contract deterministically normalizes `PASS`, `FAIL`, or `UNKNOWN`.
+7. Consumers read `verdict`, `can_pass`, `get_request`, or `latest_request_for`.
 
-```mermaid
-flowchart LR
-    A["Consumer contract"] --> B["request_check(url, condition)"]
-    B --> C["Immutable pending request"]
-    D["Any resolver"] --> E["resolve(request_id)"]
-    E --> F["Render screenshot"]
-    F --> G["Prompt comparative consensus"]
-    G --> H["Normalize PASS / FAIL / UNKNOWN"]
-    H --> I["Consumer reads can_pass() or verdict()"]
+## Review Fix: Consumer-Key Namespacing
+
+Joaquin flagged that the original public consumer-key index was not protected: any caller could reuse another caller's `consumer_key` and replace what `latest_request_for` returned.
+
+This is fixed in the patched contract. Internally the latest index key is:
+
+```text
+requester_address + ":" + consumer_key
 ```
 
-The model is asked what the screenshot visibly supports, never what the contract should do. The contract deterministically validates inputs, stores immutable requests, normalizes output, enforces confidence bands, caps attempts, and fails closed.
+`latest_request_for(consumer_key)` now looks up the caller's own namespace. Another caller may reuse the same public key text, but they only update their own namespace. Blank keys are also caller-namespaced by sender address.
 
-## Consensus boundary
+The public API shape is unchanged.
+
+## Consensus Boundary
 
 Nondeterministic operations:
 
 - `gl.nondet.web.render(url, mode="screenshot", wait_after_loaded="1s")`
 - `gl.nondet.exec_prompt(prompt, images=[screenshot])`
 
-Everything else is deterministic: request IDs, validation, caps, verdict labels, confidence labels, storage writes, retry rules, and consumer-facing approval.
+Everything else is deterministic: request IDs, validation, caps, consumer-key namespacing, verdict labels, confidence labels, storage writes, retry rules, and consumer-facing approval.
 
 Equivalence principle:
 
@@ -42,93 +49,71 @@ Equivalence principle:
 
 ## API
 
+Writes:
+
 - `request_check(url, condition, subject="", consumer_key="") -> str`
 - `resolve(request_id) -> None`
+
+Views:
+
 - `verdict(request_id) -> str`
 - `can_pass(request_id) -> bool`
 - `latest_request_for(consumer_key) -> str`
 - `get_request(request_id) -> dict`
 - `get_config() -> dict`
 
-## Consumer example
+## Consumer Example
 
 See [examples/visual_gate_consumer.py](</C:/Users/DELL/Downloads/intelligent contracts/visual-state-gate/examples/visual_gate_consumer.py>).
 
 The consumer contains no screenshot rendering, prompt construction, output parsing, or equivalence-principle logic. It only requests a check and later reads `can_pass()`.
 
-## Safety properties measured locally
+## Verification
 
-Direct tests passing: 27. StudioNet integration tests passing: 6, driving every write and every view method against a live consensus deployment (`tests/integration/test_visual_state_gate_studionet.py`).
-
-Named properties include:
-
-- `test_unknown_request_reads_fail_closed`
-- `test_overlong_url_reverts_instead_of_truncating`
-- `test_overlong_condition_reverts_instead_of_truncating`
-- `test_pending_request_never_passes_consumer_gate`
-- `test_render_failure_records_unknown_external_not_fail_or_pass`
-- `test_resolve_unknown_can_be_retried_until_attempt_cap`
-- `test_external_unknown_stops_at_attempt_cap`
-- `test_requester_is_captured_from_sender`
-
-Lint:
-
-- `contracts/visual_state_gate.py`: clean
-- `examples/visual_gate_consumer.py`: clean
-
-Both lint runs report a newer runner is available, but the contract intentionally stays on the pinned runner hash used in the downloaded docs for this pass.
-
-## Honest limits
-
-The current local direct runner returns unusable mocked screenshot bytes for `web.render(..., mode="screenshot")` unless the harness is patched. The direct suite therefore proves the safety and validation surface, including the external-failure `UNKNOWN` path, but does not claim live screenshot PASS convergence.
-
-StudioNet deployment was completed on 2026-07-26 with a dedicated local CLI account named `visual-state-gate-deployer`.
-
-- Contract address: `0x1D4caB4b4C2a88538DAA68054834078Ed860fDEc`
-- Deployer: `0xa24Ddf60F3a76Ce6f3d491B657b7965Ff8cc6375`
-- Deploy tx: `0xdd896cb5a994bdc2aea9ffc6676273ca9142396de361336919f6f3c63c99f822`
-- `request_check` tx: `0x5640b46c8bee0870ee50af207230abfa78b2e1a44834b313561279b01fb67b9e`
-- Settled `resolve` tx: `0x6e05e7ebac4ebfc84432b9994149f7a29a7193de1857dce4f0c1ad7bb5ae0033`
-- Explorer contract page: `https://explorer-studio.genlayer.com/contracts/0x1D4caB4b4C2a88538DAA68054834078Ed860fDEc`
-
-Live `request_check` input:
+Local:
 
 ```powershell
-genlayer.cmd write 0x1D4caB4b4C2a88538DAA68054834078Ed860fDEc request_check --args https://example.com "The page visibly shows the Example Domain heading." example live-demo
+pytest tests/direct/ -q
+genvm-lint check contracts\visual_state_gate.py --json
+genvm-lint check examples\visual_gate_consumer.py --json
 ```
 
-Every write method and every view method on this contract has now been called at least once against the live address.
+Latest local result:
 
-`resolve("vsg-1")` was retried several times against real consensus rounds. Multiple attempts returned `CANCELED / NO_MAJORITY` with zero rounds and no state mutation — an observed, retryable StudioNet behavior, not hidden as success. It eventually converged with `result_name: MAJORITY_AGREE`, `status_name: ACCEPTED`:
+- `29 passed`
+- primitive lint: `ok: true`
+- consumer lint: `ok: true`
+
+New regression tests:
+
+- `test_latest_request_for_is_namespaced_by_sender`
+- `test_blank_consumer_key_latest_is_namespaced_by_sender`
+
+## Patched StudioNet Deployment
+
+- Contract address: `0x235B325a7598154Eb65F6948791c023Be8b71D76`
+- Explorer: https://explorer-studio.genlayer.com/address/0x235B325a7598154Eb65F6948791c023Be8b71D76
+- Deployer: `0xa24Ddf60F3a76Ce6f3d491B657b7965Ff8cc6375`
+- Deploy tx: `0xc58a426fd70bc2f68f65023f1481a612b41824549a5b7fd5bddc1a3bc24d7064`
+- `request_check` tx: `0x7e5b8d4193099aaa140bc1414fe42512bcb838ccc3ec16ba523e1a57338daf5c`
+- `resolve` attempts: `0xe9f41a69947fe7abbad7de5e81fd7f3daf223facc8ba3f934ae8d46a0db8e025`, `0xa3920125a0a76eb2c853fd3153675e850d687e02c6b23c29e343c4498fd5e002`
+
+Live patched request:
 
 ```text
-get_request("vsg-1") ->
-  status: PASS
-  confidence: HIGH
-  error_code: NONE
-  attempts: 1
-  evidence: "The screenshot clearly displays the heading 'Example Domain' in a large,
-             bold font at the top of the page content, which matches the requested condition."
-verdict("vsg-1") -> PASS
-can_pass("vsg-1") -> true
-latest_request_for("live-demo") -> vsg-1
-get_config().next_id -> 2
+request_id: vsg-1
+url: https://example.com
+condition: The page visibly shows the Example Domain heading.
+requester: 0xa24Ddf60F3a76Ce6f3d491B657b7965Ff8cc6375
+status after request: PENDING
+get_config().next_id: 2
 ```
 
-Once a request reaches `PASS`/`FAIL`, `resolve` correctly reverts on retry (`already terminal`) — confirmed by six further `resolve` calls against the settled request, all of which reverted and left state unchanged.
+StudioNet resolve attempts during this resubmission window returned `CANCELED / NO_MAJORITY`, then the RPC rate-limited further retries. Those attempts left state unchanged, which is expected for a non-settled consensus round. This is reported as StudioNet consensus/RPC flakiness, not as a successful visual `PASS`.
 
-The `tests/integration/` suite independently deploys fresh contracts on StudioNet and drives the same full write/read surface plus a strict convergence check: two separate requests for the identical URL and condition were both resolved to completion and produced the same `status` and `confidence`, not merely "no crash." One of those convergence rounds needed 8 retries before a round landed — consistent with the flakiness observed against the canonical address above.
+## Honest Limits
 
-## Development
-
-```powershell
-$env:PYTHONIOENCODING='utf-8'; genvm-lint check contracts\visual_state_gate.py --json
-$env:PYTHONIOENCODING='utf-8'; genvm-lint check examples\visual_gate_consumer.py --json
-pytest tests/direct/ -v
-$env:PYTHONIOENCODING='utf-8'; gltest tests/integration/ -v -s --network studionet
-```
-
-Integration tests deploy their own StudioNet instance and drive every write and view; `resolve` rounds are slow and occasionally need retries, so the suite can take 10-40+ minutes end to end.
+The direct suite proves the validation, retry, output normalization, fail-closed behavior, and the consumer-key namespace fix. Live visual `PASS` convergence on the patched deployment was not observed during the resubmission window because StudioNet returned `NO_MAJORITY` and then rate-limited. The prior pre-review deployment had shown a live `PASS`, but the canonical submission address is now the patched deployment above.
 
 ## Status
 
@@ -138,8 +123,6 @@ Integration tests deploy their own StudioNet instance and drive every write and 
 - Primitive contract: implemented
 - Worked consumer example: implemented
 - Lint: clean
-- Direct tests: 27 passed
-- StudioNet integration tests: 6 passed, full write/view surface plus a strict convergence check
-- StudioNet deployment: complete
-- Live write coverage on the canonical deployed address: every write and every view method called at least once; `resolve("vsg-1")` converged to `PASS` after several `NO_MAJORITY` retries
+- Direct tests: 29 passed
+- Patched StudioNet deployment: complete
 - Public GitHub repo: https://github.com/Ifem1/visual-state-gate

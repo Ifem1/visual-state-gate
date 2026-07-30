@@ -142,6 +142,47 @@ def test_latest_request_for_consumer_updates_to_newest(direct_deploy):
     assert gate.latest_request_for("consumer-a") == second
 
 
+def test_latest_request_for_is_namespaced_by_sender(direct_vm, direct_deploy, direct_bob):
+    gate = deploy_gate(direct_deploy)
+
+    owner_request = gate.request_check(
+        "https://example.com/owner",
+        "The page visibly shows an approved badge.",
+        "",
+        "shared-key",
+    )
+    with direct_vm.prank(direct_bob):
+        bob_request = gate.request_check(
+            "https://example.com/bob",
+            "The page visibly shows an approved badge.",
+            "",
+            "shared-key",
+        )
+        assert gate.latest_request_for("shared-key") == bob_request
+
+    assert gate.latest_request_for("shared-key") == owner_request
+
+
+def test_blank_consumer_key_latest_is_namespaced_by_sender(
+    direct_vm, direct_deploy, direct_owner, direct_bob
+):
+    gate = deploy_gate(direct_deploy)
+
+    owner_request = gate.request_check(
+        "https://example.com/owner",
+        "The page visibly shows an approved badge.",
+    )
+    with direct_vm.prank(direct_bob):
+        bob_request = gate.request_check(
+            "https://example.com/bob",
+            "The page visibly shows an approved badge.",
+        )
+        assert gate.latest_request_for("") == bob_request
+
+    assert gate.latest_request_for("") == owner_request
+    assert gate.latest_request_for(as_hex_address(direct_owner)) == owner_request
+
+
 def test_latest_request_for_unknown_consumer_is_blank(direct_deploy):
     gate = deploy_gate(direct_deploy)
 

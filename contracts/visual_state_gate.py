@@ -218,6 +218,10 @@ def _require_text(label: str, value: str, maximum: int) -> str:
     return cleaned
 
 
+def _namespace_key(owner: Address, consumer_key: str) -> str:
+    return owner.as_hex + ":" + consumer_key
+
+
 class VisualStateGate(gl.Contract):
     requests: TreeMap[str, VisualRequest]
     latest_by_consumer: TreeMap[str, str]
@@ -277,10 +281,11 @@ class VisualStateGate(gl.Contract):
         clean_consumer = _clean_text(consumer_key, 120)
         if clean_consumer == "":
             clean_consumer = gl.message.sender_address.as_hex
+        requester = _coerce_address(gl.message.sender_address)
 
         request_id = "vsg-" + str(self.next_id)
         self.requests[request_id] = VisualRequest(
-            requester=_coerce_address(gl.message.sender_address),
+            requester=requester,
             consumer_key=clean_consumer,
             url=clean_url,
             condition=clean_condition,
@@ -294,7 +299,7 @@ class VisualStateGate(gl.Contract):
             created_sequence=self.next_id,
             resolved_sequence=u256(0),
         )
-        self.latest_by_consumer[clean_consumer] = request_id
+        self.latest_by_consumer[_namespace_key(requester, clean_consumer)] = request_id
         self.next_id = self.next_id + u256(1)
         return request_id
 
@@ -342,9 +347,12 @@ class VisualStateGate(gl.Contract):
     @gl.public.view
     def latest_request_for(self, consumer_key: str) -> str:
         clean_consumer = _clean_text(consumer_key, 120)
-        if clean_consumer not in self.latest_by_consumer:
+        if clean_consumer == "":
+            clean_consumer = gl.message.sender_address.as_hex
+        namespace = _namespace_key(_coerce_address(gl.message.sender_address), clean_consumer)
+        if namespace not in self.latest_by_consumer:
             return ""
-        return self.latest_by_consumer[clean_consumer]
+        return self.latest_by_consumer[namespace]
 
     @gl.public.view
     def get_request(self, request_id: str) -> dict:
